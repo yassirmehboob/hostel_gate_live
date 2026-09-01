@@ -1,17 +1,14 @@
+import 'dotenv/config';
 import createError from 'http-errors';
 import express from 'express';
 import path from 'path';
 import cookieParser from 'cookie-parser';
 import logger from 'morgan';
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import http from 'http';
 import authMiddleware from "./middleware/authMiddleware.js";
 import cors from "cors";
-
-// Enable environment variables
-dotenv.config();
 
 // Import routes
 import loadStudentRouter from './routes/loadStudents.js';
@@ -72,7 +69,7 @@ app.use('/'+projectFolder+'/student',authMiddleware, getStudentRouter);
 app.use('/'+projectFolder+'/report',authMiddleware, reportRouter);
 app.use('/'+projectFolder+'/auth', authRouter);
 app.use('/'+projectFolder+'/sync',syncRouter);
-app.use('/'+projectFolder+'/',idCardRouter);
+app.use('/'+projectFolder+'/',authMiddleware,idCardRouter);
 
 // Catch 404
 app.use(function (req, res, next) {

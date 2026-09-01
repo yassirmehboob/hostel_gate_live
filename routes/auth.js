@@ -59,9 +59,9 @@ router.post('/login',[
         }
 
         const token = generateToken({
-        id: user._id,
-        username: user.username,
-        hostelForID: user.hostelForID
+        id: account._id,
+        username: account.username,
+        hostelForID: account.hostelForID
         });
     
         return res.status(200).json({message: "Login successful", token:token, user:account});
