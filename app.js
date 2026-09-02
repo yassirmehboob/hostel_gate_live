@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+import 'dotenv/config';
 import createError from 'http-errors';
 import express from 'express';
 import path from 'path';
@@ -9,8 +9,6 @@ import { fileURLToPath } from 'url';
 import http from 'http';
 import authMiddleware from "./middleware/authMiddleware.js";
 import cors from "cors";
-
-dotenv.config();
 
 // Import routes
 import loadStudentRouter from './routes/loadStudents.js';
@@ -74,12 +72,6 @@ app.use(function (err, req, res, next) {
   res.locals.error = req.app.get('env') === 'development' ? err : {};
   res.status(err.status || 500);
   res.render('error');
-});
-
-const port = process.env.PORT;
-
-app.listen(port, () => {
-  console.log(`app listening on port ${port}`);
 });
 
 export default app;
