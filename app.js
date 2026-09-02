@@ -19,9 +19,6 @@ import syncRouter from './routes/sync.js';
 import idCardRouter from './routes/IDCard.js';
 import reportRouter from './routes/reports.js'
 
-import "./utils/sync.js"; 
-
-
 // Enable __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

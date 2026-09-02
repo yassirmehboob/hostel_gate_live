@@ -37,6 +37,19 @@ function wrapText(ctx, text, maxWidth) {
   return lines;
 }
 
+function roundedRect(ctx, x, y, width, height, radius, fill, stroke) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, radius);
+  if (fill) {
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+  if (stroke) {
+    ctx.strokeStyle = stroke;
+    ctx.stroke();
+  }
+}
+
 router.post("/M/id-card/vertical.jpg", async (req, res) => {
   try {
     const { rollNo, qrPayload, logoUrl } = req.body;
@@ -57,6 +70,7 @@ router.post("/M/id-card/vertical.jpg", async (req, res) => {
     const fname = safeText(std.fName);
     const validaty = std.stayTo;
     const year = safeText(std.year);
+    const shift = safeText(std.shiftName);
     const hostelForName = safeText(std.hostelForName);
 
     const timeZone = "Asia/Karachi";
@@ -91,30 +105,37 @@ router.post("/M/id-card/vertical.jpg", async (req, res) => {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, CARD_W, CARD_H);
 
-    // Header
-    if(hostelForName == "BOYS HOSTEL")
-    ctx.fillStyle = "#0b3d91";
-    else if(hostelForName == "GIRLS HOSTEL")
-    ctx.fillStyle = "#d16ba5";
+    const primaryColor = hostelForName === "GIRLS HOSTEL" ? "#9d2f67" : "#123f73";
+    const accentColor = hostelForName === "GIRLS HOSTEL" ? "#dca0bd" : "#5ba4d9";
+    const inkColor = "#172033";
+    const mutedColor = "#667085";
+    const borderColor = "#d8dee8";
 
-    ctx.fillRect(0, 0, CARD_W, 180);
+    // Header
+    ctx.fillStyle = primaryColor;
+    ctx.fillRect(0, 0, CARD_W, 165);
+    ctx.fillStyle = accentColor;
+    ctx.fillRect(0, 157, CARD_W, 8);
 
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    ctx.font = "bold 36px Arial";
-    ctx.fillText("University of Sindh", CARD_W / 2, 55);
+    ctx.font = "bold 34px Arial";
+    ctx.fillText("UNIVERSITY OF SINDH", CARD_W / 2 + 45, 52);
 
-    ctx.font = "bold 22px Arial";
-    ctx.fillText("HOSTEL IDENTITY CARD", CARD_W / 2, 105);
+    ctx.font = "20px Arial";
+    ctx.fillText("HOSTEL IDENTITY CARD", CARD_W / 2 + 45, 91);
+
+    ctx.font = "bold 16px Arial";
+    ctx.fillText(hostelForName, CARD_W / 2 + 45, 124);
 
     // ---- 3) Logo ----
     // const logoCenterX = CARD_W / 2;
     // const logoCenterY = 150;
     const logoSize = 95;
-    const logoPaddingX = 18;
-    const logoPaddingY = 35; // lower
+    const logoPaddingX = 20;
+    const logoPaddingY = 28;
     const logoCenterX = logoPaddingX + logoSize / 2;
     const logoCenterY = logoPaddingY + logoSize / 2;
 
@@ -179,15 +200,18 @@ router.post("/M/id-card/vertical.jpg", async (req, res) => {
     }
 
     // ---- 4) Photo (Mongo Buffer -> Sharp -> Canvas) ----
-    const photoTop = 190;
-    const photoSize = 250;
-    const photoLeft = Math.floor((CARD_W - photoSize) / 2);
+    const photoTop = 200;
+    const photoSize = 220;
+    const photoLeft = 42;
 
-    ctx.fillStyle = "#e6f0ff";
+    ctx.lineWidth = 2;
+    roundedRect(ctx, photoLeft - 7, photoTop - 7, photoSize + 14, photoSize + 14, 14, "#ffffff", borderColor);
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(photoLeft, photoTop, photoSize, photoSize, 9);
+    ctx.clip();
+    ctx.fillStyle = "#eef3f8";
     ctx.fillRect(photoLeft, photoTop, photoSize, photoSize);
-    ctx.strokeStyle = "#c8c8c8";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(photoLeft, photoTop, photoSize, photoSize);
 
     async function drawCoverSquare(img) {
       const imgAR = img.width / img.height;
@@ -270,78 +294,91 @@ try {
       ctx.restore();
     }
 
-    // ---- 5) Fields (Discipline wraps to 2 lines) ----
-    const infoStartY = photoTop + photoSize + 40;
-    const leftMargin = 80;
-    let y = infoStartY;
+    ctx.restore();
 
+    // Student identity
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = mutedColor;
+    ctx.font = "bold 15px Arial";
+    ctx.fillText("STUDENT", 294, 215);
 
-function drawField(label, value, opts = {}) {
-  const {
-    maxLines = 1,
-    valueMaxWidth = 280,
-    lineHeight = 25,
-    gapAfter = 12,
-    labelColor = "#000000",
-    valueColor = "#000000",
-  } = opts;
+    ctx.fillStyle = inkColor;
+    ctx.font = "bold 27px Arial";
+    const nameLines = wrapText(ctx, name, 300).slice(0, 2);
+    nameLines.forEach((line, index) => ctx.fillText(line, 294, 250 + index * 32));
 
-  // label
-  ctx.fillStyle = labelColor;
-  ctx.font = "bold 22px Arial";
-  ctx.fillText(label, leftMargin, y);
+    ctx.fillStyle = primaryColor;
+    ctx.font = "bold 21px Arial";
+    ctx.fillText(rollNumber, 294, 327);
 
-  // value
-  ctx.fillStyle = valueColor;
-  ctx.font = "22px Arial";
-  const v = safeText(value);
-  const valueX = leftMargin + 200;
+    ctx.fillStyle = mutedColor;
+    ctx.font = "16px Arial";
+    wrapText(ctx, discipline, 295).slice(0, 2).forEach((line, index) => {
+      ctx.fillText(line, 294, 361 + index * 22);
+    });
 
-  const lines = wrapText(ctx, v, valueMaxWidth).slice(0, maxLines);
-  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], valueX, y + i * lineHeight);
+    roundedRect(ctx, 294, 394, 270, 38, 19, primaryColor);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 15px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(`VALID UNTIL  ${formattedStayTo.toUpperCase()}`, 429, 419);
 
-  y += Math.max(1, lines.length) * lineHeight + gapAfter;
-}
+    // Details panel
+    roundedRect(ctx, 34, 465, 570, 286, 16, "#f8fafc", borderColor);
+    ctx.textAlign = "left";
 
+    function drawDetail(label, value, x, y, maxWidth = 235, maxLines = 1) {
+      ctx.fillStyle = mutedColor;
+      ctx.font = "bold 13px Arial";
+      ctx.fillText(label.toUpperCase(), x, y);
+      ctx.fillStyle = inkColor;
+      ctx.font = "19px Arial";
+      wrapText(ctx, safeText(value), maxWidth).slice(0, maxLines).forEach((line, index) => {
+        ctx.fillText(line, x, y + 27 + index * 21);
+      });
+    }
 
-    
-    drawField("Name:", name, { valueMaxWidth: 300 });
-    drawField("Father's Name:", fname, { valueMaxWidth: 300 });
-    drawField("Hostel:", hostelName, { valueMaxWidth: 300 });
-    drawField("Block No:", blockNo, { valueMaxWidth: 300 });
-    drawField("Room No:", roomNo, { valueMaxWidth: 300 });
-    drawField("Roll No:", rollNumber, { valueMaxWidth: 300 });
-    drawField("Discipline:", discipline, { maxLines: 2, valueMaxWidth: 280 });
-    drawField("Valid Upto:", formattedStayTo, { valueMaxWidth: 300,labelColor: "#d00000", valueColor: "#d00000" });
+    drawDetail("Father's Name", fname, 60, 500, 245, 2);
+    drawDetail("Hostel", hostelName, 335, 500, 230, 2);
+    drawDetail("Block", blockNo, 60, 585);
+    drawDetail("Room", roomNo, 335, 585);
+    drawDetail("Academic Year", `${year} (${shift})`, 60, 665);
+    drawDetail("Card Type", "Resident Student", 335, 665);
     
 
     // ---- 6) QR ----
     const qrImg = await loadImage(qrPngBuffer);
-    const qrSize = 150;
-    const qrX = Math.floor((CARD_W - qrSize) / 2);
-    const qrY = CARD_H - qrSize - 80;
+    const qrSize = 170;
+    const qrX = 38;
+    const qrY = 780;
 
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(qrX - 10, qrY - 10, qrSize + 20, qrSize + 20);
+    roundedRect(ctx, qrX - 10, qrY - 10, qrSize + 20, qrSize + 20, 10, "#ffffff", borderColor);
     ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
 
-    ctx.fillStyle = "#3c3c3c";
+    ctx.fillStyle = inkColor;
+    ctx.font = "bold 20px Arial";
+    ctx.textAlign = "left";
+    ctx.fillText("HOSTEL ACCESS CARD", 230, 820);
+    ctx.fillStyle = mutedColor;
     ctx.font = "16px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("Scan at Hostel Gate", CARD_W / 2, qrY + qrSize + 30);
+    ctx.fillText("Scan this QR code at the hostel gate", 230, 855);
+    ctx.fillText("for secure identity verification.", 230, 880);
+    ctx.fillStyle = primaryColor;
+    // ctx.font = "bold 15px Arial";
+    // ctx.fillText("NON-TRANSFERABLE", 230, 916);
 
     // Footer
-    ctx.strokeStyle = "#c8c8c8";
+    ctx.strokeStyle = borderColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(50, CARD_H - 40);
     ctx.lineTo(CARD_W - 50, CARD_H - 40);
     ctx.stroke();
 
-    ctx.fillStyle = "#646464";
-    ctx.font = "16px Arial";
+    ctx.fillStyle = mutedColor;
+    ctx.font = "14px Arial";
+    ctx.textAlign = "center";
     ctx.fillText("Information Technology Services Centre", CARD_W / 2, CARD_H - 18);
 
     // ---- 7) Output ----
