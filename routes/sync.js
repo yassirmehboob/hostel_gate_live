@@ -1,6 +1,34 @@
 import express from "express";
 import AccessLog from "../models/accessLog.js"; // connected to LIVE Mongo
 const router = express.Router();
+const BULK_BATCH_SIZE = 500;
+const MAX_BULK_ATTEMPTS = 3;
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientMongoError(error) {
+  return ["ETIMEDOUT", "ECONNRESET", "EPIPE"].includes(error?.code)
+    || ["ETIMEDOUT", "ECONNRESET", "EPIPE"].includes(error?.cause?.code)
+    || error?.name === "MongoNetworkError"
+    || error?.errorResponse?.name === "MongoNetworkError"
+    || error?.hasErrorLabel?.("ResetPool");
+}
+
+async function writeBatchWithRetry(ops) {
+  for (let attempt = 1; attempt <= MAX_BULK_ATTEMPTS; attempt += 1) {
+    try {
+      return await AccessLog.bulkWrite(ops, { ordered: false });
+    } catch (error) {
+      if (!isTransientMongoError(error) || attempt === MAX_BULK_ATTEMPTS) {
+        throw error;
+      }
+
+      await delay(attempt * 500);
+    }
+  }
+}
 
 // Simple device auth (recommended)
 function syncAuth(req, res, next) {
@@ -13,34 +41,56 @@ function syncAuth(req, res, next) {
 }
 
 router.post("/access-logs", syncAuth, async (req, res) => {
-  const logs = req.body.logs;
+  try {
+    const logs = req.body.logs;
 
-  if (!Array.isArray(logs) || logs.length === 0) {
-    return res.json({ ok: true, syncedLogIds: [] });
-  }
+    if (!Array.isArray(logs) || logs.length === 0) {
+      return res.json({ ok: true, syncedLogIds: [] });
+    }
 
   // OPTIONAL: validate required fields quickly
-  const clean = logs
-    .filter(l => l?.logId && l?.rollNo && l?.logDate && l?.direction)
-    .map(l => ({
-      ...l,
-      syncStatus: undefined, // don't store local sync flags in live DB if you don't want
-      syncedAt: undefined,
+    const clean = logs
+      .filter(l => l?.logId && l?.rollNo && l?.logDate && l?.direction)
+      .map(l => ({
+        ...l,
+        syncStatus: undefined,
+        syncedAt: undefined,
+      }));
+
+    if (clean.length === 0) {
+      return res.status(400).json({ ok: false, message: "No valid access logs supplied" });
+    }
+
+    const ops = clean.map((l) => ({
+      updateOne: {
+        filter: { logId: l.logId },
+        update: { $setOnInsert: l },
+        upsert: true,
+      },
     }));
 
-  const ops = clean.map((l) => ({
-    updateOne: {
-      filter: { logId: l.logId },
-      update: { $setOnInsert: l },
-      upsert: true,
-    },
-  }));
+    for (let start = 0; start < ops.length; start += BULK_BATCH_SIZE) {
+      await writeBatchWithRetry(ops.slice(start, start + BULK_BATCH_SIZE));
+    }
 
-  // ordered:false => continues even if some are duplicates
-  await AccessLog.bulkWrite(ops, { ordered: false });
+    return res.json({ ok: true, syncedLogIds: clean.map(l => l.logId) });
+  } catch (error) {
+    console.error("Access-log sync failed:", error?.message || error);
 
-  // Return ack list so offline can mark these as SYNCED
-  res.json({ ok: true, syncedLogIds: clean.map(l => l.logId) });
+    if (isTransientMongoError(error)) {
+      return res.status(503).json({
+        ok: false,
+        retryable: true,
+        message: "Database temporarily unavailable; retry sync later",
+      });
+    }
+
+    return res.status(500).json({
+      ok: false,
+      retryable: false,
+      message: "Access-log sync failed",
+    });
+  }
 });
 
 export default router;
