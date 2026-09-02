@@ -1,12 +1,9 @@
 import express from "express";
 import AccessLog from "../models/accessLog.js"; // connected to LIVE Mongo
 const router = express.Router();
-const BULK_BATCH_SIZE = 500;
-const MAX_BULK_ATTEMPTS = 3;
-
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Keep each request short enough for cPanel/Passenger proxy timeouts. Access
+// logs can contain images, so large batches can be expensive to upload/write.
+const MAX_LOGS_PER_REQUEST = 30;
 
 function isTransientMongoError(error) {
   return ["ETIMEDOUT", "ECONNRESET", "EPIPE"].includes(error?.code)
@@ -14,20 +11,6 @@ function isTransientMongoError(error) {
     || error?.name === "MongoNetworkError"
     || error?.errorResponse?.name === "MongoNetworkError"
     || error?.hasErrorLabel?.("ResetPool");
-}
-
-async function writeBatchWithRetry(ops) {
-  for (let attempt = 1; attempt <= MAX_BULK_ATTEMPTS; attempt += 1) {
-    try {
-      return await AccessLog.bulkWrite(ops, { ordered: false });
-    } catch (error) {
-      if (!isTransientMongoError(error) || attempt === MAX_BULK_ATTEMPTS) {
-        throw error;
-      }
-
-      await delay(attempt * 500);
-    }
-  }
 }
 
 // Simple device auth (recommended)
@@ -50,6 +33,7 @@ router.post("/access-logs", syncAuth, async (req, res) => {
 
   // OPTIONAL: validate required fields quickly
     const clean = logs
+      .slice(0, MAX_LOGS_PER_REQUEST)
       .filter(l => l?.logId && l?.rollNo && l?.logDate && l?.direction)
       .map(l => ({
         ...l,
@@ -69,11 +53,13 @@ router.post("/access-logs", syncAuth, async (req, res) => {
       },
     }));
 
-    for (let start = 0; start < ops.length; start += BULK_BATCH_SIZE) {
-      await writeBatchWithRetry(ops.slice(start, start + BULK_BATCH_SIZE));
-    }
+    await AccessLog.bulkWrite(ops, { ordered: false });
 
-    return res.json({ ok: true, syncedLogIds: clean.map(l => l.logId) });
+    return res.json({
+      ok: true,
+      syncedLogIds: clean.map(l => l.logId),
+      remaining: Math.max(0, logs.length - MAX_LOGS_PER_REQUEST),
+    });
   } catch (error) {
     console.error("Access-log sync failed:", error?.message || error);
 
