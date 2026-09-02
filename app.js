@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import createError from 'http-errors';
 import express from 'express';
 import path from 'path';
@@ -9,6 +9,8 @@ import { fileURLToPath } from 'url';
 import http from 'http';
 import authMiddleware from "./middleware/authMiddleware.js";
 import cors from "cors";
+
+dotenv.config();
 
 // Import routes
 import loadStudentRouter from './routes/loadStudents.js';
@@ -25,17 +27,6 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-
-// const corsOptions = {
-//   origin: ["http://localhost:5173", "http://172.16.40.53:5173", "http://172.16.40.159:5173"],
-//   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-//   allowedHeaders: ["Content-Type", "Authorization"],
-//   credentials: true,
-// };
-
-
-// app.use(cors(corsOptions));
-// app.options("*", cors(corsOptions));  // ✅ use SAME options
 
 app.use(cors({ origin: true, credentials: true }));
 app.options("*", cors({ origin: true, credentials: true }));
@@ -83,6 +74,12 @@ app.use(function (err, req, res, next) {
   res.locals.error = req.app.get('env') === 'development' ? err : {};
   res.status(err.status || 500);
   res.render('error');
+});
+
+const port = process.env.PORT;
+
+app.listen(port, () => {
+  console.log(`app listening on port ${port}`);
 });
 
 export default app;
